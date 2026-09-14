@@ -1,0 +1,20 @@
+[workspace]
+resolver = "2"
+members = [
+    "crates/boshiamy_core",
+    "crates/boshiamy_cli",
+]
+default-members = [
+    "crates/boshiamy_core",
+    "crates/boshiamy_cli",
+]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+authors = ["Scott Chen"]
+repository = "https://github.com/schenfb/boshiamy-correction-keyboard"
+
+[workspace.dependencies]
+boshiamy_core = { path = "crates/boshiamy_core" }
