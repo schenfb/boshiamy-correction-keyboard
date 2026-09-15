@@ -256,7 +256,9 @@ fn main() -> ExitCode {
         while injected < args.errors_per_sentence && tries < 20 {
             tries += 1;
             let pos = rng.below(typed.len());
-            if typed[pos].0 != units[pos].0 {
+            if typed[pos].0 != units[pos].0
+                || !boshiamy_core::candidate_generator::is_cjk(units[pos].0)
+            {
                 continue;
             }
             if let Some((ch, code)) = inject_typo(index, &mut rng, units[pos].0, &units[pos].1) {

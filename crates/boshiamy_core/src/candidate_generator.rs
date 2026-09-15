@@ -62,7 +62,9 @@ impl CandidateGenerator {
             },
         );
 
-        if raw_code.is_empty() {
+        // Only CJK ideographs are ever corrected, and only into CJK ideographs.
+        // Punctuation, digits and Latin letters keep what the user typed.
+        if raw_code.is_empty() || !is_cjk(original) {
             return by_char.into_values().collect();
         }
 
@@ -73,6 +75,9 @@ impl CandidateGenerator {
             .into_iter()
             .map(|(_, ch)| (ch, 1.0));
         for (ch, dist) in exact.chain(near) {
+            if !is_cjk(ch) {
+                continue;
+            }
             by_char
                 .entry(ch)
                 .and_modify(|existing| {
@@ -110,6 +115,12 @@ impl CandidateGenerator {
         list.truncate(self.max_per_position);
         list
     }
+}
+
+/// CJK Unified Ideographs (basic block + Extension A).
+pub fn is_cjk(ch: char) -> bool {
+    let u = ch as u32;
+    (0x4E00..=0x9FFF).contains(&u) || (0x3400..=0x4DBF).contains(&u)
 }
 
 #[cfg(test)]

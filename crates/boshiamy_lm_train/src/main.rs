@@ -153,8 +153,13 @@ fn main() -> ExitCode {
         eprintln!("vocab too large for 20-bit ids: {v_total}");
         return ExitCode::from(1);
     }
+    // Characters below the count threshold are pooled into <unk>. Spread the pooled
+    // probability over the number of such types, otherwise <unk> looks as likely as a
+    // common character and garbage characters never get corrected.
+    let n_oov_types = (char_counts.len() - vocab.len()).max(1);
+    let unk_type_penalty = (n_oov_types as f64).ln() as f32;
     eprintln!(
-        "  lines={n_lines} distinct_chars={} vocab={}",
+        "  lines={n_lines} distinct_chars={} vocab={} oov_types={n_oov_types}",
         char_counts.len(),
         vocab.len()
     );
@@ -266,6 +271,7 @@ fn main() -> ExitCode {
         uni_lp[c] = p.ln() as f32;
     }
     uni_lp[BOS as usize] = -99.0;
+    uni_lp[UNK as usize] -= unk_type_penalty;
     let unk_lp = uni_lp[UNK as usize];
 
     // Bigram probabilities (pruned) + unigram backoff weights.
@@ -299,7 +305,11 @@ fn main() -> ExitCode {
         };
         let tot = cont_b_total[b as usize] as f64;
         let p = ((cnt - d2).max(0.0) / tot) + gamma_b(b) * (uni_lp[c as usize] as f64).exp();
-        bi_lp.push(p.ln() as f32);
+        let mut lp = p.ln() as f32;
+        if c == UNK {
+            lp -= unk_type_penalty;
+        }
+        bi_lp.push(lp);
     }
     // Backoff weights for unigram contexts b: (1 - Σ_kept p(c|b)) / (1 - Σ_kept p1(c)).
     let mut uni_bo: Vec<f32> = vec![0.0; v_total];
@@ -341,7 +351,11 @@ fn main() -> ExitCode {
         let tot = ctx_total[&ab] as f64;
         let gamma = d3 * ctx_types[&ab] as f64 / tot;
         let p = ((n - d3).max(0.0) / tot) + gamma * lp2(b, c).exp();
-        tri_lp.push(p.ln() as f32);
+        let mut lp = p.ln() as f32;
+        if c == UNK {
+            lp -= unk_type_penalty;
+        }
+        tri_lp.push(lp);
     }
     let mut bi_bo: Vec<f32> = vec![0.0; bi_keys.len()];
     {

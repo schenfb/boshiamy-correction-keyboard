@@ -106,8 +106,10 @@ impl CinParser {
                     content: line.to_string(),
                 });
             }
+            // Real tables use letters plus a few punctuation keys (e.g. `,` prefixes
+            // symbol codes in Boshiamy-style tables); accept any printable ASCII.
             let normalized = code.to_ascii_lowercase();
-            if !normalized.chars().all(|c| c.is_ascii_alphabetic()) {
+            if !normalized.chars().all(|c| c.is_ascii_graphic()) {
                 return Err(CinParseError::InvalidLine {
                     line: line_no,
                     content: line.to_string(),
