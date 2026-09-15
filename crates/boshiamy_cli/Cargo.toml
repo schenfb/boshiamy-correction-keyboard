@@ -1,0 +1,15 @@
+[package]
+name = "boshiamy_cli"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "CLI demo for Boshiamy Shared Core sentence correction"
+
+[[bin]]
+name = "boshiamy-correct"
+path = "src/main.rs"
+
+[dependencies]
+boshiamy_core = { workspace = true }

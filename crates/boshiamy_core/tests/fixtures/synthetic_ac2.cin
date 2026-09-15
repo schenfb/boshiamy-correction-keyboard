@@ -1,0 +1,33 @@
+# SYNTHETIC FIXTURE ONLY — invented for unit tests / AC2 demo.
+# NOT a real 嘸蝦米 / Boshiamy code table. Do not ship as user data.
+#
+# Mapping used by AC2 (distance-1 substitutions marked with *):
+#   這 aa | 樣 ab
+#   如 ba | 甘 bb*   (typed bb → 甘, intended ba → 如)
+#   果 bc
+#   偶 ca | 側 cb*   (typed cb → 側, intended ca → 偶)
+#   爾 da | 而 db*   (typed db → 而, intended da → 爾)
+#   打 ea | 錯 eb | 一 ec | 個 ed | 字 ee | 也 ef | 沒 eg | 關 eh | 係 ei
+#
+%ename SyntheticAC2
+%cname 合成AC2測試碼表
+%chardef begin
+aa	這
+ab	樣
+ba	如
+bb	甘
+bc	果
+ca	偶
+cb	側
+da	爾
+db	而
+ea	打
+eb	錯
+ec	一
+ed	個
+ee	字
+ef	也
+eg	沒
+eh	關
+ei	係
+%chardef end

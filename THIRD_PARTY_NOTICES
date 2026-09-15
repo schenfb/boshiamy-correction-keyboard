@@ -1,0 +1,28 @@
+Third-Party Notices
+===================
+
+This repository currently has no bundled third-party binary artifacts.
+
+Language model
+--------------
+Phase 1 ships a tiny **synthetic** Traditional Chinese n-gram stub invented for
+tests and demos (`StubNgramModel` in `boshiamy_core`). It is original content
+of this project and licensed under Apache License 2.0 together with the rest of
+the code.
+
+It is **not** derived from proprietary Boshiamy / 嘸蝦米 data, and it is **not**
+a production-grade corpus model.
+
+Hook for a real model
+---------------------
+Implement the `LanguageModel` trait in `boshiamy_core` and construct
+`CorrectionEngine::new(...)` with your offline model. If you later vendor an
+open-license model (for example CC0 / Apache-2.0 / MIT n-gram or small LM
+weights), list its name, license, and source URL in this file before committing
+the weights.
+
+Code tables
+-----------
+No real Boshiamy / 嘸蝦米 `.cin` or compiled code table is included. Only tiny
+synthetic fixtures under `crates/boshiamy_core/tests/fixtures/` are present for
+automated tests.
