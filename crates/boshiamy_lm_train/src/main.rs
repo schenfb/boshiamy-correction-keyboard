@@ -92,7 +92,7 @@ fn cap_by_count(keys: &mut Vec<u64>, counts: &HashMap<u64, u32>, max: usize) {
 }
 
 fn is_heldout(line_no: usize, every: usize) -> bool {
-    every > 0 && line_no % every == 0
+    every > 0 && line_no.is_multiple_of(every)
 }
 
 fn discount(n1: u64, n2: u64) -> f64 {
