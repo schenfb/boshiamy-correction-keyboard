@@ -1,0 +1,23 @@
+name: CI
+on:
+  push:
+    branches: [main, "feature/**"]
+  pull_request:
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy, rustfmt
+      - run: cargo fmt --all --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test
+      - name: AC2 demo (synthetic fixture, stub LM)
+        run: |
+          out=$(cargo run -q -p boshiamy_cli -- --cin crates/boshiamy_core/tests/fixtures/synthetic_ac2.cin --units "這:aa,樣:ab,甘:bb,果:bc,側:cb,而:db,打:ea,錯:eb,一:ec,個:ed,字:ee,也:ef,沒:eg,關:eh,係:ei")
+          test "$out" = "這樣如果偶爾打錯一個字也沒關係"
+      - name: No code-table or model artifacts committed
+        run: |
+          ! git ls-files | grep -Ei '\.(bslm|cin)$' | grep -v 'tests/fixtures/synthetic_ac2.cin'

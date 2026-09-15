@@ -18,7 +18,7 @@ pub struct CorrectionPolicyConfig {
 impl CorrectionPolicyConfig {
     pub fn mvp_defaults() -> Self {
         Self {
-            min_score_delta: 2.0,
+            min_score_delta: 4.0,
             max_changed_absolute: 3,
             max_changed_fraction: 0.25,
         }
@@ -53,7 +53,9 @@ impl CorrectionPolicy {
             return 0;
         }
         let by_frac = ((len as f64) * self.config.max_changed_fraction).floor() as usize;
-        by_frac.min(self.config.max_changed_absolute).max(1.min(len))
+        by_frac
+            .min(self.config.max_changed_absolute)
+            .max(1.min(len))
     }
 
     /// Skip whole-sentence correction for English / URL / email / password / code / mostly-digits.
@@ -180,10 +182,7 @@ fn is_mostly_ascii_english(text: &str) -> bool {
     if chars.is_empty() {
         return false;
     }
-    let ascii_alpha = chars
-        .iter()
-        .filter(|c| c.is_ascii_alphabetic())
-        .count();
+    let ascii_alpha = chars.iter().filter(|c| c.is_ascii_alphabetic()).count();
     let cjk = chars
         .iter()
         .filter(|c| {

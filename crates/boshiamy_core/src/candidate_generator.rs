@@ -1,7 +1,7 @@
 //! Per-position candidate generation (original + distance ≤ 1).
 
-use crate::boshiamy_distance::BoshiamyDistance;
 use crate::code_index::CodeIndex;
+use crate::language_model::LanguageModel;
 use crate::session::SentenceSession;
 use std::collections::BTreeMap;
 
@@ -28,15 +28,18 @@ impl CandidateGenerator {
     }
 
     /// For each session unit, keep the original character plus distance≤1 alternatives.
+    /// When the per-position cap is exceeded, alternatives with the best unigram
+    /// language score survive, so rare characters are dropped before common ones.
     pub fn generate(
         &self,
         index: &CodeIndex,
         session: &SentenceSession,
+        lm: &dyn LanguageModel,
     ) -> Vec<Vec<PositionCandidate>> {
         session
             .units
             .iter()
-            .map(|unit| self.candidates_for_unit(index, unit.output_character, &unit.raw_code))
+            .map(|unit| self.candidates_for_unit(index, unit.output_character, &unit.raw_code, lm))
             .collect()
     }
 
@@ -45,6 +48,7 @@ impl CandidateGenerator {
         index: &CodeIndex,
         original: char,
         raw_code: &str,
+        lm: &dyn LanguageModel,
     ) -> Vec<PositionCandidate> {
         let mut by_char: BTreeMap<char, PositionCandidate> = BTreeMap::new();
 
@@ -58,14 +62,17 @@ impl CandidateGenerator {
             },
         );
 
-        // Scan all codes at MVP substitution distance 0 or 1 from raw_code.
-        for (code, ch) in index.iter_mappings() {
-            let Some(dist) = BoshiamyDistance::substitution_distance(raw_code, code) else {
-                continue;
-            };
-            if dist > 1.0 {
-                continue;
-            }
+        if raw_code.is_empty() {
+            return by_char.into_values().collect();
+        }
+
+        // Distance 0: other chars sharing the exact code; distance 1: one substitution away.
+        let exact = index.chars_for_code(raw_code).map(|ch| (ch, 0.0));
+        let near = index
+            .substitution_neighbors(raw_code)
+            .into_iter()
+            .map(|(_, ch)| (ch, 1.0));
+        for (ch, dist) in exact.chain(near) {
             by_char
                 .entry(ch)
                 .and_modify(|existing| {
@@ -80,14 +87,26 @@ impl CandidateGenerator {
                 });
         }
 
-        let mut list: Vec<PositionCandidate> = by_char.into_values().collect();
-        // Prefer original first, then lower distance, then stable by char.
-        list.sort_by(|a, b| {
+        let mut list: Vec<(PositionCandidate, f64)> = by_char
+            .into_values()
+            .map(|c| {
+                let prior = lm.score_transition("", c.character);
+                (c, prior)
+            })
+            .collect();
+        // Prefer original first, then lower distance, then higher unigram prior, then stable by char.
+        list.sort_by(|(a, pa), (b, pb)| {
             b.is_original
                 .cmp(&a.is_original)
-                .then(a.distance.partial_cmp(&b.distance).unwrap_or(std::cmp::Ordering::Equal))
+                .then(
+                    a.distance
+                        .partial_cmp(&b.distance)
+                        .unwrap_or(std::cmp::Ordering::Equal),
+                )
+                .then(pb.partial_cmp(pa).unwrap_or(std::cmp::Ordering::Equal))
                 .then(a.character.cmp(&b.character))
         });
+        let mut list: Vec<PositionCandidate> = list.into_iter().map(|(c, _)| c).collect();
         list.truncate(self.max_per_position);
         list
     }
@@ -119,7 +138,8 @@ cb 側
         let index = tiny_index();
         let gen = CandidateGenerator::new(8);
         let session = SentenceSession::from_units(vec![SessionUnit::new('甘', "bb")]);
-        let cands = gen.generate(&index, &session);
+        let lm = crate::language_model::StubNgramModel::default_traditional_chinese_stub();
+        let cands = gen.generate(&index, &session, &lm);
         assert_eq!(cands.len(), 1);
         let chars: Vec<char> = cands[0].iter().map(|c| c.character).collect();
         assert!(chars.contains(&'甘'));

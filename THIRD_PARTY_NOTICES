@@ -1,28 +1,51 @@
 Third-Party Notices
 ===================
 
-This repository currently has no bundled third-party binary artifacts.
-
-Language model
---------------
-Phase 1 ships a tiny **synthetic** Traditional Chinese n-gram stub invented for
-tests and demos (`StubNgramModel` in `boshiamy_core`). It is original content
-of this project and licensed under Apache License 2.0 together with the rest of
-the code.
-
-It is **not** derived from proprietary Boshiamy / 嘸蝦米 data, and it is **not**
-a production-grade corpus model.
-
-Hook for a real model
----------------------
-Implement the `LanguageModel` trait in `boshiamy_core` and construct
-`CorrectionEngine::new(...)` with your offline model. If you later vendor an
-open-license model (for example CC0 / Apache-2.0 / MIT n-gram or small LM
-weights), list its name, license, and source URL in this file before committing
-the weights.
-
 Code tables
 -----------
 No real Boshiamy / 嘸蝦米 `.cin` or compiled code table is included. Only tiny
 synthetic fixtures under `crates/boshiamy_core/tests/fixtures/` are present for
-automated tests.
+automated tests. Users import their own table at runtime.
+
+Language model (character trigram, `BSLM` format)
+--------------------------------------------------
+The offline correction model is a pruned character trigram trained by
+`crates/boshiamy_lm_train` from the pipeline in `tools/lm/`.
+
+Training corpus
+  Source   : Chinese Wikipedia, via the Hugging Face dataset
+             `wikimedia/wikipedia`, configuration `20231101.zh`
+             https://huggingface.co/datasets/wikimedia/wikipedia
+  License  : Creative Commons Attribution-ShareAlike 4.0 (CC BY-SA 4.0)
+             https://creativecommons.org/licenses/by-sa/4.0/
+             (Wikipedia text is also available under GFDL.)
+  Processing: sentence extraction (`tools/lm/prepare.py`), script
+             normalisation to Taiwan Traditional Chinese with OpenCC
+             (`t2tw` for Traditional lines, `s2twp` for Simplified lines),
+             n-gram counting with interpolated Kneser-Ney smoothing and
+             count-threshold pruning.
+
+Distribution
+  A model file derived from this corpus is distributed under CC BY-SA 4.0 with
+  attribution to Wikipedia contributors. The Apache-2.0 license of this
+  repository's source code does not apply to model files. Model files are not
+  committed to this repository; release builds fetch or rebuild them from a
+  tagged pipeline run so results are reproducible.
+
+Attribution text to ship with the model:
+  "Language model statistics derived from Chinese Wikipedia
+  (https://zh.wikipedia.org), text by Wikipedia contributors,
+  CC BY-SA 4.0. Converted to Taiwan Traditional Chinese with OpenCC."
+
+Tools used at build time (not shipped in the app)
+-------------------------------------------------
+OpenCC              Apache License 2.0   https://github.com/BYVoid/OpenCC
+huggingface_hub     Apache License 2.0   https://github.com/huggingface/huggingface_hub
+pyarrow             Apache License 2.0   https://arrow.apache.org/
+
+Test-only synthetic data
+------------------------
+`StubNgramModel` (a hand-written bigram stub) and `tools/lm/gen_synthetic_cin.py`
+(random-code table generator) are original content of this project under
+Apache License 2.0. Neither is derived from any proprietary input-method data
+and neither is intended for end users.

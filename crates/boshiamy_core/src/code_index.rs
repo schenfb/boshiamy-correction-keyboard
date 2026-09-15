@@ -1,13 +1,16 @@
 //! Bidirectional code ↔ character index.
 
 use crate::cin_parser::CinTable;
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap};
 
 /// Bidirectional index: code→chars and char→codes (multi-code per char preserved).
 #[derive(Debug, Clone, Default)]
 pub struct CodeIndex {
     code_to_chars: BTreeMap<String, BTreeSet<char>>,
     char_to_codes: BTreeMap<char, BTreeSet<String>>,
+    /// Wildcard patterns (`a?c`) → chars whose code matches with one substitution.
+    /// Built once so substitution-distance-1 lookups are O(code length), not O(table).
+    wildcard_to_chars: HashMap<String, Vec<(String, char)>>,
 }
 
 impl CodeIndex {
@@ -24,15 +27,36 @@ impl CodeIndex {
             .entry(code.clone())
             .or_default()
             .insert(ch);
-        self.char_to_codes.entry(ch).or_default().insert(code);
+        self.char_to_codes
+            .entry(ch)
+            .or_default()
+            .insert(code.clone());
+        for pat in wildcard_patterns(&code) {
+            self.wildcard_to_chars
+                .entry(pat)
+                .or_default()
+                .push((code.clone(), ch));
+        }
+    }
+
+    /// All (code, char) pairs whose code is exactly one substitution away from `raw_code`.
+    /// Exact matches are excluded; use [`chars_for_code`](Self::chars_for_code) for distance 0.
+    pub fn substitution_neighbors(&self, raw_code: &str) -> Vec<(&str, char)> {
+        let mut out = Vec::new();
+        for pat in wildcard_patterns(raw_code) {
+            if let Some(list) = self.wildcard_to_chars.get(&pat) {
+                for (code, ch) in list {
+                    if code != raw_code {
+                        out.push((code.as_str(), *ch));
+                    }
+                }
+            }
+        }
+        out
     }
 
     pub fn chars_for_code(&self, code: &str) -> impl Iterator<Item = char> + '_ {
-        self.code_to_chars
-            .get(code)
-            .into_iter()
-            .flatten()
-            .copied()
+        self.code_to_chars.get(code).into_iter().flatten().copied()
     }
 
     pub fn codes_for_char(&self, ch: char) -> impl Iterator<Item = &str> + '_ {
@@ -61,10 +85,24 @@ impl CodeIndex {
 
     /// Return every (code, char) pair for neighbor search helpers.
     pub fn iter_mappings(&self) -> impl Iterator<Item = (&str, char)> + '_ {
-        self.code_to_chars.iter().flat_map(|(code, chars)| {
-            chars.iter().map(move |ch| (code.as_str(), *ch))
-        })
+        self.code_to_chars
+            .iter()
+            .flat_map(|(code, chars)| chars.iter().map(move |ch| (code.as_str(), *ch)))
     }
+}
+
+/// `abc` → [`?bc`, `a?c`, `ab?`]
+fn wildcard_patterns(code: &str) -> Vec<String> {
+    let bytes = code.as_bytes();
+    (0..bytes.len())
+        .map(|i| {
+            let mut p = String::with_capacity(bytes.len());
+            for (j, &b) in bytes.iter().enumerate() {
+                p.push(if i == j { '?' } else { b as char });
+            }
+            p
+        })
+        .collect()
 }
 
 #[cfg(test)]
@@ -89,5 +127,19 @@ ac 二
         assert_eq!(codes, BTreeSet::from(["aa", "ab"]));
         let chars: BTreeSet<_> = index.chars_for_code("aa").collect();
         assert_eq!(chars, BTreeSet::from(['一']));
+    }
+
+    #[test]
+    fn substitution_neighbors_excludes_exact() {
+        let table = CinParser::parse("%chardef begin\nba 如\nbb 甘\nab 樣\nbba 多\n%chardef end\n")
+            .unwrap();
+        let index = CodeIndex::from_cin_table(&table);
+        let mut n: Vec<_> = index
+            .substitution_neighbors("bb")
+            .into_iter()
+            .map(|(_, c)| c)
+            .collect();
+        n.sort();
+        assert_eq!(n, vec!['如', '樣']);
     }
 }

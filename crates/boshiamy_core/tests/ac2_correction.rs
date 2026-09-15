@@ -7,9 +7,7 @@
 //!   偶 ca ↔ 側 cb (typed cb)
 //!   爾 da ↔ 而 db (typed db)
 
-use boshiamy_core::{
-    CinParser, CodeIndex, CorrectionEngine, SentenceSession, SessionUnit,
-};
+use boshiamy_core::{CinParser, CodeIndex, CorrectionEngine, SentenceSession, SessionUnit};
 use std::path::PathBuf;
 
 fn fixture_path() -> PathBuf {
@@ -77,7 +75,8 @@ fn parse_index_distance_candidates_smoke() {
 
     let session = ac2_session();
     let gen = CandidateGenerator::new(8);
-    let cands = gen.generate(&index, &session);
+    let lm = boshiamy_core::StubNgramModel::default_traditional_chinese_stub();
+    let cands = gen.generate(&index, &session, &lm);
     let pos2: Vec<char> = cands[2].iter().map(|c| c.character).collect();
     assert!(pos2.contains(&'甘'));
     assert!(pos2.contains(&'如'));

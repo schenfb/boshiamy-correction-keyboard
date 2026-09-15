@@ -1,0 +1,15 @@
+[package]
+name = "boshiamy_lm_train"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Train a pruned character trigram (interpolated Kneser-Ney) model in BSLM format"
+
+[[bin]]
+name = "boshiamy-lm-train"
+path = "src/main.rs"
+
+[dependencies]
+boshiamy_core = { workspace = true }

@@ -71,13 +71,22 @@ mod tests {
 
     #[test]
     fn identical_is_zero() {
-        assert_eq!(BoshiamyDistance::substitution_distance("ba", "ba"), Some(0.0));
+        assert_eq!(
+            BoshiamyDistance::substitution_distance("ba", "ba"),
+            Some(0.0)
+        );
     }
 
     #[test]
     fn one_letter_replace_is_one() {
-        assert_eq!(BoshiamyDistance::substitution_distance("ba", "bb"), Some(1.0));
-        assert_eq!(BoshiamyDistance::substitution_distance("ca", "cb"), Some(1.0));
+        assert_eq!(
+            BoshiamyDistance::substitution_distance("ba", "bb"),
+            Some(1.0)
+        );
+        assert_eq!(
+            BoshiamyDistance::substitution_distance("ca", "cb"),
+            Some(1.0)
+        );
     }
 
     #[test]

@@ -29,10 +29,7 @@ fn cin_parser_rejects_unclosed_and_empty() {
 
 #[test]
 fn code_index_multi_code_per_char() {
-    let table = CinParser::parse(
-        "%chardef begin\naa 字\nab 字\nac 詞\n%chardef end\n",
-    )
-    .unwrap();
+    let table = CinParser::parse("%chardef begin\naa 字\nab 字\nac 詞\n%chardef end\n").unwrap();
     let index = CodeIndex::from_cin_table(&table);
     let mut codes: Vec<_> = index.codes_for_char('字').collect();
     codes.sort();
@@ -41,8 +38,14 @@ fn code_index_multi_code_per_char() {
 
 #[test]
 fn boshiamy_distance_mvp_substitution_only() {
-    assert_eq!(BoshiamyDistance::substitution_distance("ca", "ca"), Some(0.0));
-    assert_eq!(BoshiamyDistance::substitution_distance("ca", "cb"), Some(1.0));
+    assert_eq!(
+        BoshiamyDistance::substitution_distance("ca", "ca"),
+        Some(0.0)
+    );
+    assert_eq!(
+        BoshiamyDistance::substitution_distance("ca", "cb"),
+        Some(1.0)
+    );
     assert_eq!(BoshiamyDistance::substitution_distance("ca", "c"), None);
     assert_eq!(BoshiamyDistance::substitution_distance("ca", "cab"), None);
     assert_eq!(BoshiamyDistance::substitution_distance("ab", "ba"), None);
@@ -52,8 +55,9 @@ fn boshiamy_distance_mvp_substitution_only() {
 fn candidate_generator_caps_and_keeps_original() {
     let index = CodeIndex::from_cin_table(&CinParser::parse(TINY_CIN).unwrap());
     let gen = CandidateGenerator::new(2);
+    let lm = StubNgramModel::default_traditional_chinese_stub();
     let session = SentenceSession::from_units(vec![SessionUnit::new('甘', "bb")]);
-    let cands = gen.generate(&index, &session);
+    let cands = gen.generate(&index, &session, &lm);
     assert!(cands[0].len() <= 2);
     assert_eq!(cands[0][0].character, '甘');
     assert!(cands[0][0].is_original);
@@ -68,18 +72,28 @@ fn sentence_ranker_beam_prefers_better_lm_path() {
         SessionUnit::new('而', "db"),
     ]);
     let gen = CandidateGenerator::new(8);
-    let per = gen.generate(&index, &session);
     let lm = StubNgramModel::default_traditional_chinese_stub();
-    let ranker = SentenceRanker::new(ScoringWeights::mvp_defaults());
+    let per = gen.generate(&index, &session, &lm);
+    // Light penalties: this checks beam mechanics on the stub LM's small score scale,
+    // not the production defaults (which are tuned for the trigram model).
+    let ranker = SentenceRanker::new(ScoringWeights {
+        lambda_edit: 1.5,
+        lambda_change: 0.8,
+        lambda_choice: 3.0,
+        beam_width: 32,
+    });
     let ranked = ranker.rank(&session, &per, &lm);
     assert!(!ranked.is_empty());
     // Best should include 如/偶/爾 when LM boosts them.
     let texts: Vec<_> = ranked.iter().map(|r| r.text.as_str()).collect();
     assert!(
-        texts.iter().any(|t| *t == "如偶爾"),
+        texts.contains(&"如偶爾"),
         "expected 如偶爾 among beam results, got: {texts:?}"
     );
-    let original = ranked.iter().find(|r| r.text == "甘側而").expect("original path");
+    let original = ranked
+        .iter()
+        .find(|r| r.text == "甘側而")
+        .expect("original path");
     let corrected = ranked.iter().find(|r| r.text == "如偶爾").unwrap();
     assert!(
         corrected.score > original.score,
@@ -117,11 +131,7 @@ fn correction_policy_requires_delta_and_change_cap() {
 #[test]
 fn policy_skips_english_and_urls() {
     let policy = CorrectionPolicy::new(CorrectionPolicyConfig::mvp_defaults());
-    let eng = SentenceSession::from_units(
-        "Hello"
-            .chars()
-            .map(|c| SessionUnit::new(c, "xx"))
-            .collect(),
-    );
+    let eng =
+        SentenceSession::from_units("Hello".chars().map(|c| SessionUnit::new(c, "xx")).collect());
     assert!(policy.should_skip_session(&eng));
 }

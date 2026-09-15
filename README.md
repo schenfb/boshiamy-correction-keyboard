@@ -26,12 +26,21 @@ boshiamy_core (library)
 ├── CandidateGenerator original + distance≤1 alts, capped per position
 ├── SentenceRanker     beam search + scoring
 ├── CorrectionPolicy   thresholds, skip English/URL/email/password/code/digits
-├── LanguageModel      trait + synthetic Traditional Chinese n-gram stub
+├── LanguageModel      trait; StubNgramModel (tests) and NgramModel (BSLM trigram file)
 └── SentenceSession    originalText + units (char, rawCode, selectedIndex, timestamp)
 
 boshiamy_cli (binary: boshiamy-correct)
-└── load .cin + session units → print best correction or "none"
+└── load .cin + session units [+ --lm model.bslm] → print best correction or "none"
+
+boshiamy_lm_train (binary: boshiamy-lm-train)
+└── sentences.txt → pruned Kneser-Ney character trigram → .bslm (see tools/lm/)
+
+boshiamy_eval (binary: boshiamy-eval)
+└── inject distance-1 typos into clean sentences → recall / false positives / latency
 ```
+
+Candidate lookup uses a wildcard index (`a?c`) built at import time, so each
+position costs O(code length) regardless of table size.
 
 ### Scoring
 
@@ -42,10 +51,14 @@ score = languageScore
       - λ_choice * changedExplicitSelections
 ```
 
-MVP defaults: `λ_edit=1.5`, `λ_change=0.8`, `λ_choice=3.0`.
+Defaults (tuned with `boshiamy_eval` on the Wikipedia trigram model, natural-log
+scores): `λ_edit=3.0`, `λ_change=3.0`, `λ_choice=6.0`, `min_score_delta=4.0`,
+32 candidates per position, beam 32.
 
-The stub LM is replaceable: implement `LanguageModel` and pass it to
-`CorrectionEngine::new`. See `THIRD_PARTY_NOTICES`.
+The real model is a character trigram trained from Chinese Wikipedia
+(CC BY-SA 4.0) by the pipeline in `tools/lm/`; see `tools/lm/README.md` and
+`THIRD_PARTY_NOTICES`. Any other `LanguageModel` implementation can be passed to
+`CorrectionEngine::new`.
 
 ### Policy (MVP)
 
