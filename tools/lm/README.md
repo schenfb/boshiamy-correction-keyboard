@@ -46,6 +46,21 @@ clean sentences, and per-sentence latency. Tune `--lambda-edit`,
 pipeline when no real table is available; its numbers are not meaningful for
 the product.
 
+## Colloquial supplement
+
+Wikipedia is encyclopedic, so everyday phrasing is under-represented. The
+corpus mixes in, repeated 30x:
+
+- Common Voice zh-TW sentence files (CC0) from
+  https://github.com/common-voice/common-voice/tree/main/server/data/zh-TW
+  (`data/cv_sentences.txt`, ~19k sentences)
+- `seed_colloquial.txt`, ~250 original everyday sentences written for this
+  project (Apache-2.0). Do not use them as evaluation data; they are training data.
+
+```bash
+{ cat data/sentences_tw.txt; for i in $(seq 30); do cat data/cv_sentences.txt data/seed.txt; done; } > data/sentences_mix.txt
+```
+
 ## Notes
 
 - `build_corpus.sh` classifies each sentence as Traditional or Simplified and

@@ -25,6 +25,13 @@ Training corpus
              n-gram counting with interpolated Kneser-Ney smoothing and
              count-threshold pruning.
 
+Colloquial supplement (mixed into the same model)
+  Source   : Mozilla Common Voice zh-TW sentence files
+             https://github.com/common-voice/common-voice/tree/main/server/data/zh-TW
+  License  : CC0 1.0 (public domain dedication)
+  Plus     : tools/lm/seed_colloquial.txt, original sentences written for this
+             project, Apache License 2.0.
+
 Distribution
   A model file derived from this corpus is distributed under CC BY-SA 4.0 with
   attribution to Wikipedia contributors. The Apache-2.0 license of this
