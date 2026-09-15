@@ -115,7 +115,11 @@ impl LanguageModel for StubNgramModel {
 
         let mut score = 0.0;
         for (i, &ch) in chars.iter().enumerate() {
-            score += self.unigrams.get(&ch).copied().unwrap_or(self.default_unigram);
+            score += self
+                .unigrams
+                .get(&ch)
+                .copied()
+                .unwrap_or(self.default_unigram);
             if i > 0 {
                 let prev = chars[i - 1];
                 score += self

@@ -16,9 +16,12 @@ pub struct ScoringWeights {
 impl ScoringWeights {
     pub fn mvp_defaults() -> Self {
         Self {
-            lambda_edit: 1.5,
-            lambda_change: 0.8,
-            lambda_choice: 3.0,
+            // Tuned with boshiamy_eval against the Wikipedia trigram model (natural-log
+            // scores): higher change penalties cut wrong suggestions to ~2-5% while
+            // keeping false positives on clean text near zero. Retune when the LM changes.
+            lambda_edit: 3.0,
+            lambda_change: 3.0,
+            lambda_choice: 6.0,
             beam_width: 32,
         }
     }
@@ -81,8 +84,7 @@ impl SentenceRanker {
                 let prefix: String = state.chars.iter().collect();
                 for cand in candidates {
                     let changed = cand.character != unit.output_character;
-                    let changed_explicit =
-                        changed && unit.is_explicit_selection();
+                    let changed_explicit = changed && unit.is_explicit_selection();
                     let transition = lm.score_transition(&prefix, cand.character);
                     let penalty = self.weights.lambda_edit * cand.distance
                         + self.weights.lambda_change * if changed { 1.0 } else { 0.0 }

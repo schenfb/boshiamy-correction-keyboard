@@ -5,14 +5,17 @@
 //!     --cin crates/boshiamy_core/tests/fixtures/synthetic_ac2.cin \
 //!     --units "這:aa,樣:ab,甘:bb,果:bc,側:cb,而:db,打:ea,錯:eb,一:ec,個:ed,字:ee,也:ef,沒:eg,關:eh,係:ei"
 
-use boshiamy_core::{CinParser, CodeIndex, CorrectionEngine, SentenceSession, SessionUnit};
+use boshiamy_core::{
+    CinParser, CodeIndex, CorrectionEngine, CorrectionPolicyConfig, NgramModel, ScoringWeights,
+    SentenceSession, SessionUnit, StubNgramModel, DEFAULT_MAX_CANDIDATES_PER_POSITION,
+};
 use std::env;
 use std::fs;
 use std::process::ExitCode;
 
 fn print_usage() {
     eprintln!(
-        "Usage:\n  boshiamy-correct --cin <path.cin> --units \"字:code,字:code,...\"\n\n\
+        "Usage:\n  boshiamy-correct --cin <path.cin> --units \"字:code,字:code,...\" [--lm model.bslm]\n\n\
          Units format: outputCharacter:rawCode pairs separated by commas.\n\
          Prints the best correction sentence, or the line \"none\"."
     );
@@ -47,6 +50,7 @@ fn main() -> ExitCode {
     let args: Vec<String> = env::args().collect();
     let mut cin_path: Option<String> = None;
     let mut units_spec: Option<String> = None;
+    let mut lm_path: Option<String> = None;
 
     let mut i = 1;
     while i < args.len() {
@@ -58,6 +62,10 @@ fn main() -> ExitCode {
             "--units" => {
                 i += 1;
                 units_spec = args.get(i).cloned();
+            }
+            "--lm" => {
+                i += 1;
+                lm_path = args.get(i).cloned();
             }
             "-h" | "--help" => {
                 print_usage();
@@ -102,7 +110,28 @@ fn main() -> ExitCode {
     };
 
     let index = CodeIndex::from_cin_table(&table);
-    let engine = CorrectionEngine::with_defaults(index);
+    let engine = match lm_path {
+        Some(p) => match NgramModel::load(&p) {
+            Ok(lm) => CorrectionEngine::new(
+                index,
+                Box::new(lm),
+                ScoringWeights::mvp_defaults(),
+                CorrectionPolicyConfig::mvp_defaults(),
+                DEFAULT_MAX_CANDIDATES_PER_POSITION,
+            ),
+            Err(e) => {
+                eprintln!("failed to load LM {p}: {e}");
+                return ExitCode::from(1);
+            }
+        },
+        None => CorrectionEngine::new(
+            index,
+            Box::new(StubNgramModel::default_traditional_chinese_stub()),
+            ScoringWeights::mvp_defaults(),
+            CorrectionPolicyConfig::mvp_defaults(),
+            DEFAULT_MAX_CANDIDATES_PER_POSITION,
+        ),
+    };
     let session = SentenceSession::from_units(units);
 
     match engine.suggest(&session) {

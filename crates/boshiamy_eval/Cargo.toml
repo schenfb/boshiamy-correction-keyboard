@@ -1,0 +1,15 @@
+[package]
+name = "boshiamy_eval"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+authors.workspace = true
+repository.workspace = true
+description = "Offline evaluation: inject distance-1 typos into sentences and measure correction recall / false positives / latency"
+
+[[bin]]
+name = "boshiamy-eval"
+path = "src/main.rs"
+
+[dependencies]
+boshiamy_core = { workspace = true }

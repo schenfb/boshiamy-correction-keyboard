@@ -12,3 +12,17 @@ dependencies = [
 [[package]]
 name = "boshiamy_core"
 version = "0.1.0"
+
+[[package]]
+name = "boshiamy_eval"
+version = "0.1.0"
+dependencies = [
+ "boshiamy_core",
+]
+
+[[package]]
+name = "boshiamy_lm_train"
+version = "0.1.0"
+dependencies = [
+ "boshiamy_core",
+]
