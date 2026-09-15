@@ -238,6 +238,15 @@ impl NgramModel {
 }
 
 impl LanguageModel for NgramModel {
+    fn unigram(&self, ch: char) -> f64 {
+        let c = self.id(ch);
+        if c == UNK {
+            self.unk_logprob as f64
+        } else {
+            self.uni_logprob[c as usize] as f64
+        }
+    }
+
     fn score_sentence(&self, text: &str) -> f64 {
         let ids: Vec<u32> = text.chars().map(|c| self.id(c)).collect();
         self.score_ids(&ids) as f64

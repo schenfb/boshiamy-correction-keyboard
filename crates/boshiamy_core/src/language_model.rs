@@ -11,6 +11,12 @@ pub trait LanguageModel: Send + Sync {
     /// Higher is better. Implementations should be offline-only.
     fn score_sentence(&self, text: &str) -> f64;
 
+    /// Context-free prior for a single character, used to rank capped candidate
+    /// lists. Default approximates it with a sentence-initial transition.
+    fn unigram(&self, ch: char) -> f64 {
+        self.score_transition("", ch)
+    }
+
     /// Optional incremental score when appending `next` after `prefix`.
     /// Default falls back to full-sentence scoring.
     fn score_transition(&self, prefix: &str, next: char) -> f64 {

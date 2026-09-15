@@ -95,7 +95,7 @@ impl CandidateGenerator {
         let mut list: Vec<(PositionCandidate, f64)> = by_char
             .into_values()
             .map(|c| {
-                let prior = lm.score_transition("", c.character);
+                let prior = lm.unigram(c.character);
                 (c, prior)
             })
             .collect();
