@@ -1,10 +1,11 @@
-// Whole-sentence correction: candidate generation, beam search, display policy.
-// Mirrors crates/boshiamy_core (candidate_generator.rs, sentence_ranker.rs,
-// correction_policy.rs). Keep the numbers in sync with ScoringWeights::mvp_defaults()
-// and CorrectionPolicyConfig::mvp_defaults().
+// Whole-sentence correction: lattice decode + display policy.
+// Mirrors crates/boshiamy_core (lib.rs, lattice.rs, correction_policy.rs). Keep
+// the numbers in sync with LatticeWeights::mvp_defaults() and
+// CorrectionPolicyConfig::mvp_defaults().
 
 import { CodeIndex, isCjk } from './cin';
-import { NgramModel, BOS } from './lm';
+import { NgramModel } from './lm';
+import { DEFAULT_LATTICE_WEIGHTS, LatticeDecoder, LatticeWeights, Ranked } from './lattice';
 
 export interface SessionUnit {
   ch: string;
@@ -13,23 +14,13 @@ export interface SessionUnit {
   selectedIndex: number;
 }
 
-export interface Weights {
-  lambdaEdit: number;
-  lambdaChange: number;
-  lambdaChoice: number;
-  beamWidth: number;
-  maxCandidatesPerPosition: number;
+export interface PolicyConfig {
   minScoreDelta: number;
   maxChangedAbsolute: number;
   maxChangedFraction: number;
 }
 
-export const DEFAULT_WEIGHTS: Weights = {
-  lambdaEdit: 3.0,
-  lambdaChange: 3.0,
-  lambdaChoice: 6.0,
-  beamWidth: 32,
-  maxCandidatesPerPosition: 32,
+export const DEFAULT_POLICY: PolicyConfig = {
   minScoreDelta: 4.0,
   maxChangedAbsolute: 3,
   maxChangedFraction: 0.25,
@@ -44,134 +35,69 @@ export interface Suggestion {
   originalScore: number;
   changedCount: number;
   elapsedMs: number;
-}
-
-interface Candidate {
-  ch: string;
-  id: number;
-  distance: number;
-  isOriginal: boolean;
-}
-
-interface Beam {
-  ids: number[];
-  chars: string[];
-  distance: number;
-  changed: number;
-  changedExplicit: number;
-  score: number;
+  /** Best alternative even when below threshold (for the debug line). */
+  runnerUp?: { text: string; delta: number };
 }
 
 export class CorrectionEngine {
+  private decoder: LatticeDecoder;
+
   constructor(
     public index: CodeIndex,
     public lm: NgramModel,
-    public weights: Weights = DEFAULT_WEIGHTS,
-  ) {}
-
-  private candidates(unit: SessionUnit): Candidate[] {
-    const original: Candidate = {
-      ch: unit.ch,
-      id: this.lm.id(unit.ch),
-      distance: 0,
-      isOriginal: true,
-    };
-    if (!unit.rawCode || !isCjk(unit.ch)) return [original];
-    const byChar = new Map<string, Candidate>([[unit.ch, original]]);
-    const add = (ch: string, distance: number) => {
-      if (!isCjk(ch)) return;
-      const existing = byChar.get(ch);
-      if (existing) {
-        if (distance < existing.distance) existing.distance = distance;
-      } else byChar.set(ch, { ch, id: this.lm.id(ch), distance, isOriginal: false });
-    };
-    for (const ch of this.index.charsForCode(unit.rawCode)) add(ch, 0);
-    for (const [, ch] of this.index.substitutionNeighbors(unit.rawCode)) add(ch, 1);
-    const list = Array.from(byChar.values()).map((c) => ({ c, prior: this.lm.unigram(c.ch) }));
-    list.sort((x, y) => {
-      if (x.c.isOriginal !== y.c.isOriginal) return x.c.isOriginal ? -1 : 1;
-      if (x.c.distance !== y.c.distance) return x.c.distance - y.c.distance;
-      if (x.prior !== y.prior) return y.prior - x.prior;
-      return x.c.ch < y.c.ch ? -1 : 1;
-    });
-    return list.slice(0, this.weights.maxCandidatesPerPosition).map((x) => x.c);
+    public weights: LatticeWeights = DEFAULT_LATTICE_WEIGHTS,
+    public policy: PolicyConfig = DEFAULT_POLICY,
+  ) {
+    this.decoder = new LatticeDecoder(index, lm, weights);
   }
 
   private maxAllowedChanges(len: number): number {
     if (len === 0) return 0;
-    const byFrac = Math.floor(len * this.weights.maxChangedFraction);
-    return Math.max(Math.min(byFrac, this.weights.maxChangedAbsolute), Math.min(1, len));
+    // A misplaced space always changes two characters, so short sentences still allow two.
+    const byFrac = Math.floor(len * this.policy.maxChangedFraction);
+    return Math.max(Math.min(byFrac, this.policy.maxChangedAbsolute), Math.min(2, len));
   }
 
-  suggest(units: SessionUnit[]): Suggestion | null {
-    const t0 = Date.now();
-    if (units.length === 0) return null;
+  private select(units: SessionUnit[], ranked: Ranked[], t0: number): Suggestion | null {
     const original = units.map((u) => u.ch).join('');
-    if (shouldSkipText(original)) return null;
-    const w = this.weights;
-    const lm = this.lm;
-
-    let beam: Beam[] = [{ ids: [], chars: [], distance: 0, changed: 0, changedExplicit: 0, score: 0 }];
-    for (const unit of units) {
-      const cands = this.candidates(unit);
-      const next: Beam[] = [];
-      for (const state of beam) {
-        const n = state.ids.length;
-        const a = n >= 2 ? state.ids[n - 2] : BOS;
-        const b = n >= 1 ? state.ids[n - 1] : BOS;
-        for (const cand of cands) {
-          const changed = cand.ch !== unit.ch;
-          const explicit = changed && unit.selectedIndex > 0;
-          const penalty =
-            w.lambdaEdit * cand.distance + (changed ? w.lambdaChange : 0) + (explicit ? w.lambdaChoice : 0);
-          next.push({
-            ids: [...state.ids, cand.id],
-            chars: [...state.chars, cand.ch],
-            distance: state.distance + cand.distance,
-            changed: state.changed + (changed ? 1 : 0),
-            changedExplicit: state.changedExplicit + (explicit ? 1 : 0),
-            score: state.score + lm.logprob(a, b, cand.id) - penalty,
-          });
-        }
-      }
-      next.sort((x, y) => y.score - x.score);
-      beam = next.slice(0, Math.max(1, w.beamWidth));
-    }
-
-    const originalScore = lm.scoreSentence(original);
+    const originalScore = this.lm.scoreSentence(original);
     const maxChanges = this.maxAllowedChanges(units.length);
-    const ranked = beam
-      .map((s) => {
-        const n = s.ids.length;
-        const a = n >= 2 ? s.ids[n - 2] : BOS;
-        const b = n >= 1 ? s.ids[n - 1] : BOS;
-        // Add </s> so the full-sentence score matches lm.scoreSentence.
-        const full = s.score + lm.logprob(a, b, 1) + w.lambdaEdit * s.distance + w.lambdaChange * s.changed + w.lambdaChoice * s.changedExplicit;
-        const score = full - w.lambdaEdit * s.distance - w.lambdaChange * s.changed - w.lambdaChoice * s.changedExplicit;
-        return { ...s, score };
-      })
-      .sort((x, y) => y.score - x.score);
-
+    let runnerUp: Suggestion['runnerUp'];
     for (const cand of ranked) {
-      const text = cand.chars.join('');
-      if (text === original || cand.changed === 0 || cand.changed > maxChanges) continue;
+      if (cand.text === original || cand.changedCount === 0 || cand.changedCount > maxChanges) continue;
       const delta = cand.score - originalScore;
-      if (delta < w.minScoreDelta) continue;
+      if (!runnerUp) runnerUp = { text: cand.text, delta };
+      if (delta < this.policy.minScoreDelta) continue;
       const changed: number[] = [];
       cand.chars.forEach((c, i) => {
         if (c !== units[i].ch) changed.push(i);
       });
-      return {
-        original,
-        corrected: text,
-        changed,
-        score: cand.score,
-        originalScore,
-        changedCount: cand.changed,
-        elapsedMs: Date.now() - t0,
-      };
+      return { original, corrected: cand.text, changed, score: cand.score, originalScore, changedCount: cand.changedCount, elapsedMs: Date.now() - t0 };
     }
-    return null;
+    return runnerUp ? { original, corrected: original, changed: [], score: originalScore, originalScore, changedCount: 0, elapsedMs: Date.now() - t0, runnerUp } : null;
+  }
+
+  /** Synchronous decode (used by scripts/tests). Returns a suggestion only when it clears the threshold. */
+  suggest(units: SessionUnit[]): Suggestion | null {
+    const t0 = Date.now();
+    if (units.length === 0) return null;
+    if (shouldSkipText(units.map((u) => u.ch).join(''))) return null;
+    const s = this.select(units, this.decoder.decode(units), t0);
+    return s && s.changed.length ? s : null;
+  }
+
+  /**
+   * Cooperative decode for the UI: yields between units so typing stays smooth,
+   * returns null when cancelled. The result may carry only `runnerUp` when no
+   * candidate cleared the threshold.
+   */
+  async suggestAsync(units: SessionUnit[], isCancelled: () => boolean): Promise<Suggestion | null> {
+    const t0 = Date.now();
+    if (units.length === 0) return null;
+    if (shouldSkipText(units.map((u) => u.ch).join(''))) return null;
+    const ranked = await this.decoder.decodeAsync(units, isCancelled);
+    if (ranked === null) return null;
+    return this.select(units, ranked, t0);
   }
 }
 

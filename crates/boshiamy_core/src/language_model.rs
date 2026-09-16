@@ -11,6 +11,36 @@ pub trait LanguageModel: Send + Sync {
     /// Higher is better. Implementations should be offline-only.
     fn score_sentence(&self, text: &str) -> f64;
 
+    /// Token id for a character (models without a vocabulary use the code point).
+    fn char_id(&self, ch: char) -> u32 {
+        ch as u32
+    }
+    fn bos_id(&self) -> u32 {
+        0xFFFF_FFFE
+    }
+    fn eos_id(&self) -> u32 {
+        0xFFFF_FFFF
+    }
+    /// log P(c | a b) over token ids. Default reconstructs characters and calls
+    /// [`score_transition`](Self::score_transition); real models override this.
+    fn logprob_ids(&self, a: u32, b: u32, c: u32) -> f64 {
+        if c == self.eos_id() {
+            return 0.0;
+        }
+        let mut prefix = String::new();
+        for id in [a, b] {
+            if id != self.bos_id() {
+                if let Some(ch) = char::from_u32(id) {
+                    prefix.push(ch);
+                }
+            }
+        }
+        match char::from_u32(c) {
+            Some(next) => self.score_transition(&prefix, next),
+            None => 0.0,
+        }
+    }
+
     /// Context-free prior for a single character, used to rank capped candidate
     /// lists. Default approximates it with a sentence-initial transition.
     fn unigram(&self, ch: char) -> f64 {
@@ -66,11 +96,11 @@ impl StubNgramModel {
         let mut bigrams = HashMap::new();
         let pairs = [
             ('這', '樣', 2.0),
-            ('樣', '如', 3.5),
-            ('如', '果', 5.0),
-            ('果', '偶', 3.5),
-            ('偶', '爾', 5.0),
-            ('爾', '打', 2.5),
+            ('樣', '如', 6.0),
+            ('如', '果', 9.0),
+            ('果', '偶', 6.0),
+            ('偶', '爾', 9.0),
+            ('爾', '打', 6.0),
             ('打', '錯', 4.0),
             ('錯', '一', 2.0),
             ('一', '個', 4.0),

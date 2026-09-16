@@ -52,10 +52,12 @@ impl CorrectionPolicy {
         if len == 0 {
             return 0;
         }
+        // A misplaced space always changes two characters, so short sentences
+        // must still allow two changes (PRD: short-sentence exception).
         let by_frac = ((len as f64) * self.config.max_changed_fraction).floor() as usize;
         by_frac
             .min(self.config.max_changed_absolute)
-            .max(1.min(len))
+            .max(2.min(len))
     }
 
     /// Skip whole-sentence correction for English / URL / email / password / code / mostly-digits.
@@ -227,5 +229,7 @@ mod tests {
         assert_eq!(policy.max_allowed_changes(16), 3);
         // len 8 → 25% = 2
         assert_eq!(policy.max_allowed_changes(8), 2);
+        assert_eq!(policy.max_allowed_changes(3), 2);
+        assert_eq!(policy.max_allowed_changes(1), 1);
     }
 }

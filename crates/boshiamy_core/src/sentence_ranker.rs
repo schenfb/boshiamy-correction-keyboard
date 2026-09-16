@@ -20,7 +20,7 @@ impl ScoringWeights {
             // scores): higher change penalties cut wrong suggestions to ~2-5% while
             // keeping false positives on clean text near zero. Retune when the LM changes.
             lambda_edit: 3.0,
-            lambda_change: 3.0,
+            lambda_change: 4.0,
             lambda_choice: 6.0,
             beam_width: 32,
         }

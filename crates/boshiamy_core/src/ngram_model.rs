@@ -238,6 +238,19 @@ impl NgramModel {
 }
 
 impl LanguageModel for NgramModel {
+    fn char_id(&self, ch: char) -> u32 {
+        self.id(ch)
+    }
+    fn bos_id(&self) -> u32 {
+        BOS
+    }
+    fn eos_id(&self) -> u32 {
+        EOS
+    }
+    fn logprob_ids(&self, a: u32, b: u32, c: u32) -> f64 {
+        self.logprob(a, b, c) as f64
+    }
+
     fn unigram(&self, ch: char) -> f64 {
         let c = self.id(ch);
         if c == UNK {

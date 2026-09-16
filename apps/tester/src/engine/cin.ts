@@ -5,6 +5,8 @@ export class CodeIndex {
   private codeToChars = new Map<string, string[]>();
   private charToCodes = new Map<string, string[]>();
   private wildcard = new Map<string, Array<[string, string]>>();
+  /** Code with one letter removed → entries, for "user skipped a letter" lookups. */
+  private deletion = new Map<string, Array<[string, string]>>();
   name = '';
   entries = 0;
 
@@ -45,7 +47,33 @@ export class CodeIndex {
       if (list) list.push([code, ch]);
       else this.wildcard.set(pat, [[code, ch]]);
     }
+    for (const shorter of deletionPatterns(code)) {
+      const list = this.deletion.get(shorter);
+      if (list) list.push([code, ch]);
+      else this.deletion.set(shorter, [[code, ch]]);
+    }
     this.entries++;
+  }
+
+  /**
+   * (code, char, cost) triples one edit away from rawCode: substitution, omitted
+   * letter, extra letter, adjacent transposition. Exact matches excluded.
+   * Mirrors CodeIndex::edit_neighbors + BoshiamyDistance::edit_cost (all 1.0).
+   */
+  editNeighbors(rawCode: string): Array<[string, string, number]> {
+    const out: Array<[string, string, number]> = [];
+    for (const [code, ch] of this.substitutionNeighbors(rawCode)) out.push([code, ch, 1]);
+    const omitted = this.deletion.get(rawCode);
+    if (omitted) for (const [code, ch] of omitted) out.push([code, ch, 1]);
+    for (const shorter of deletionPatterns(rawCode)) {
+      for (const ch of this.charsForCode(shorter)) out.push([shorter, ch, 1]);
+    }
+    for (let i = 0; i + 1 < rawCode.length; i++) {
+      if (rawCode[i] === rawCode[i + 1]) continue;
+      const swapped = rawCode.slice(0, i) + rawCode[i + 1] + rawCode[i] + rawCode.slice(i + 2);
+      for (const ch of this.charsForCode(swapped)) out.push([swapped, ch, 1]);
+    }
+    return out;
   }
 
   charsForCode(code: string): string[] {
@@ -79,6 +107,14 @@ function push(map: Map<string, string[]>, key: string, value: string) {
   if (list) {
     if (!list.includes(value)) list.push(value);
   } else map.set(key, [value]);
+}
+
+/** abc → [bc, ac, ab] (only for codes of length ≥ 2). */
+function deletionPatterns(code: string): string[] {
+  if (code.length < 2) return [];
+  const out: string[] = [];
+  for (let i = 0; i < code.length; i++) out.push(code.slice(0, i) + code.slice(i + 1));
+  return out;
 }
 
 function wildcardPatterns(code: string): string[] {

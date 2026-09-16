@@ -31,6 +31,9 @@ struct Args {
     policy: CorrectionPolicyConfig,
     max_candidates: usize,
     show_failures: usize,
+    error_kind: String,
+    lambda_seg: Option<f64>,
+    no_lattice: bool,
 }
 
 fn parse_args() -> Result<Args, String> {
@@ -45,6 +48,9 @@ fn parse_args() -> Result<Args, String> {
         policy: CorrectionPolicyConfig::mvp_defaults(),
         max_candidates: boshiamy_core::DEFAULT_MAX_CANDIDATES_PER_POSITION,
         show_failures: 0,
+        error_kind: "mixed".into(),
+        lambda_seg: None,
+        no_lattice: false,
     };
     let argv: Vec<String> = std::env::args().collect();
     let mut i = 1;
@@ -69,12 +75,17 @@ fn parse_args() -> Result<Args, String> {
             "--max-changed" => a.policy.max_changed_absolute = num(val)? as usize,
             "--max-candidates" => a.max_candidates = num(val)? as usize,
             "--show-failures" => a.show_failures = num(val)? as usize,
+            "--error-kind" => a.error_kind = val.clone(),
+            "--lambda-seg" => a.lambda_seg = Some(num(val)?),
+            "--no-lattice" => {
+                a.no_lattice = val == "1" || val == "true";
+            }
             other => return Err(format!("unknown argument {other}")),
         }
         i += 2;
     }
     if a.cin.is_empty() || a.lm.is_empty() || a.sentences.is_empty() {
-        return Err("usage: boshiamy-eval --cin table.cin --lm model.bslm --sentences clean.txt [--max-sentences N] [--errors-per-sentence N] [--seed N] [--lambda-edit X] [--lambda-change X] [--lambda-choice X] [--beam N] [--min-score-delta X] [--max-changed N] [--max-candidates N] [--show-failures N]".into());
+        return Err("usage: boshiamy-eval --cin table.cin --lm model.bslm --sentences clean.txt [--max-sentences N] [--errors-per-sentence N] [--seed N] [--lambda-edit X] [--lambda-change X] [--lambda-choice X] [--beam N] [--min-score-delta X] [--max-changed N] [--max-candidates N] [--show-failures N] [--error-kind sub|seg|mixed] [--lambda-seg X] [--no-lattice 1]".into());
     }
     Ok(a)
 }
@@ -100,6 +111,43 @@ fn first_code(index: &CodeIndex, ch: char) -> Option<String> {
         .codes_for_char(ch)
         .min_by_key(|c| c.len())
         .map(|s| s.to_string())
+}
+
+/// Move one boundary by one letter between units i and i+1 (space pressed early or
+/// late). Returns the two replacement (char, code) pairs when both new codes are legal.
+fn inject_segmentation_typo(
+    index: &CodeIndex,
+    rng: &mut Rng,
+    left: &(char, String),
+    right: &(char, String),
+) -> Option<((char, String), (char, String))> {
+    let (lc, rc) = (&left.1, &right.1);
+    let mut opts: Vec<(String, String)> = Vec::new();
+    if lc.len() >= 2 {
+        // last letter of left moves to the front of right
+        opts.push((
+            lc[..lc.len() - 1].to_string(),
+            format!("{}{}", &lc[lc.len() - 1..], rc),
+        ));
+    }
+    if rc.len() >= 2 {
+        // first letter of right moves to the end of left
+        opts.push((format!("{}{}", lc, &rc[..1]), rc[1..].to_string()));
+    }
+    let mut legal: Vec<((char, String), (char, String))> = Vec::new();
+    for (nl, nr) in opts {
+        let lch = index.chars_for_code(&nl).next();
+        let rch = index.chars_for_code(&nr).next();
+        if let (Some(l), Some(r)) = (lch, rch) {
+            if l != left.0 || r != right.0 {
+                legal.push(((l, nl), (r, nr)));
+            }
+        }
+    }
+    if legal.is_empty() {
+        return None;
+    }
+    Some(legal[rng.below(legal.len())].clone())
 }
 
 /// Replace one letter of `code` so the result is a legal code producing a different char.
@@ -165,13 +213,17 @@ fn main() -> ExitCode {
         lm.trigram_count(),
         t0.elapsed()
     );
-    let engine = CorrectionEngine::new(
+    let mut engine = CorrectionEngine::new(
         index,
         Box::new(lm),
         args.weights,
         args.policy,
         args.max_candidates,
     );
+    engine.use_lattice = !args.no_lattice;
+    if let Some(ls) = args.lambda_seg {
+        engine.lattice_weights_mut().lambda_seg = ls;
+    }
     let index = engine.index();
 
     // Load sentences; keep only those fully covered by the table (so typos are always injectable).
@@ -261,7 +313,28 @@ fn main() -> ExitCode {
             {
                 continue;
             }
-            if let Some((ch, code)) = inject_typo(index, &mut rng, units[pos].0, &units[pos].1) {
+            let use_seg = match args.error_kind.as_str() {
+                "seg" => true,
+                "sub" => false,
+                _ => rng.below(2) == 0,
+            };
+            if use_seg {
+                if pos + 1 >= typed.len()
+                    || typed[pos + 1].0 != units[pos + 1].0
+                    || !boshiamy_core::candidate_generator::is_cjk(units[pos + 1].0)
+                {
+                    continue;
+                }
+                if let Some((l, r)) =
+                    inject_segmentation_typo(index, &mut rng, &units[pos], &units[pos + 1])
+                {
+                    typed[pos] = l;
+                    typed[pos + 1] = r;
+                    injected += 1;
+                }
+            } else if let Some((ch, code)) =
+                inject_typo(index, &mut rng, units[pos].0, &units[pos].1)
+            {
                 typed[pos] = (ch, code);
                 injected += 1;
             }

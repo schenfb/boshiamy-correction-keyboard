@@ -19,7 +19,7 @@ interface Props {
   composing: boolean;
 }
 
-export function Keyboard({ onKey, composing }: Props) {
+function KeyboardImpl({ onKey, composing }: Props) {
   return (
     <View style={styles.keyboard}>
       <View style={styles.row}>
@@ -45,7 +45,9 @@ export function Keyboard({ onKey, composing }: Props) {
   );
 }
 
-function Key({
+export const Keyboard = React.memo(KeyboardImpl);
+
+const Key = React.memo(function Key({
   label,
   onPress,
   flex,
@@ -66,7 +68,7 @@ function Key({
       <Text style={[styles.keyText, small && styles.keyTextSmall]}>{label}</Text>
     </Pressable>
   );
-}
+});
 
 const styles = StyleSheet.create({
   keyboard: { backgroundColor: '#d1d4da', paddingVertical: 6, paddingHorizontal: 2, gap: 8 },

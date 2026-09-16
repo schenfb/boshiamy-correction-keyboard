@@ -1,5 +1,6 @@
 //! Per-position candidate generation (original + distance ≤ 1).
 
+use crate::boshiamy_distance::BoshiamyDistance;
 use crate::code_index::CodeIndex;
 use crate::language_model::LanguageModel;
 use crate::session::SentenceSession;
@@ -71,9 +72,9 @@ impl CandidateGenerator {
         // Distance 0: other chars sharing the exact code; distance 1: one substitution away.
         let exact = index.chars_for_code(raw_code).map(|ch| (ch, 0.0));
         let near = index
-            .substitution_neighbors(raw_code)
+            .edit_neighbors(raw_code)
             .into_iter()
-            .map(|(_, ch)| (ch, 1.0));
+            .map(|(_, ch, kind)| (ch, BoshiamyDistance::edit_cost(kind)));
         for (ch, dist) in exact.chain(near) {
             if !is_cjk(ch) {
                 continue;

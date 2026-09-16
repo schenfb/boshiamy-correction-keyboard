@@ -56,16 +56,30 @@ export default function App() {
 
   const candidates = useMemo(() => (engine && code ? engine.index.charsForCode(code) : []), [engine, code]);
 
+  // Each keystroke bumps the generation; an in-flight decode for an older
+  // generation aborts at its next yield point, so typing never waits on it.
+  const generation = useRef(0);
   const scheduleSuggest = useCallback(() => {
+    const gen = ++generation.current;
     if (timer.current) clearTimeout(timer.current);
-    timer.current = setTimeout(() => {
+    timer.current = setTimeout(async () => {
       if (!engine) return;
       const units = unitsRef.current;
-      const t0 = Date.now();
-      const s = engine.suggest(units);
-      setSuggestion(s);
-      setStatus(`${units.length} 字 · 校正 ${Date.now() - t0} ms${s ? ` · Δ${(s.score - s.originalScore).toFixed(1)}` : ' · 無建議'}`);
-    }, 120);
+      if (units.length < 2) {
+        setSuggestion(null);
+        setStatus('');
+        return;
+      }
+      const s = await engine.suggestAsync(units, () => generation.current !== gen);
+      if (generation.current !== gen || s === null) return;
+      if (s.changed.length) {
+        setSuggestion(s);
+        setStatus(`${units.length} 字 · ${s.elapsedMs} ms · Δ${(s.score - s.originalScore).toFixed(1)}`);
+      } else {
+        setSuggestion(null);
+        setStatus(`${units.length} 字 · ${s.elapsedMs} ms · 無建議${s.runnerUp ? `（次佳 ${s.runnerUp.text} Δ${s.runnerUp.delta.toFixed(1)}）` : ''}`);
+      }
+    }, 60);
   }, [engine]);
 
   const commit = useCallback(
@@ -79,13 +93,17 @@ export default function App() {
   );
 
   const endSession = useCallback(() => {
+    generation.current++;
     unitsRef.current = [];
     setSuggestion(null);
     setStatus('');
   }, []);
 
+  const stateRef = useRef({ code, candidates, text });
+  stateRef.current = { code, candidates, text };
   const onKey = useCallback(
     (action: KeyAction) => {
+      const { code, candidates, text } = stateRef.current;
       switch (action.type) {
         case 'letter':
           if (code.length < MAX_CODE_LEN) setCode(code + action.value);
@@ -141,7 +159,7 @@ export default function App() {
           return;
       }
     },
-    [code, candidates, commit, endSession, scheduleSuggest, text],
+    [commit, endSession, scheduleSuggest],
   );
 
   const applySuggestion = useCallback(() => {

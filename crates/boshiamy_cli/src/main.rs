@@ -51,6 +51,8 @@ fn main() -> ExitCode {
     let mut cin_path: Option<String> = None;
     let mut units_spec: Option<String> = None;
     let mut lm_path: Option<String> = None;
+    let mut debug = false;
+    let mut no_lattice = false;
 
     let mut i = 1;
     while i < args.len() {
@@ -67,6 +69,8 @@ fn main() -> ExitCode {
                 i += 1;
                 lm_path = args.get(i).cloned();
             }
+            "--debug" => debug = true,
+            "--no-lattice" => no_lattice = true,
             "-h" | "--help" => {
                 print_usage();
                 return ExitCode::SUCCESS;
@@ -133,6 +137,17 @@ fn main() -> ExitCode {
         ),
     };
     let session = SentenceSession::from_units(units);
+    let mut engine = engine;
+    engine.use_lattice = !no_lattice;
+    if debug {
+        eprintln!("original score {:.2}", engine.original_score(&session));
+        for r in engine.rank(&session).iter().take(8) {
+            eprintln!(
+                "  {:.2}  lm={:.2} dist={} changed={}  {}",
+                r.score, r.language_score, r.total_distance, r.changed_count, r.text
+            );
+        }
+    }
 
     match engine.suggest(&session) {
         Some(s) => {

@@ -11,6 +11,21 @@ pub struct CodeIndex {
     /// Wildcard patterns (`a?c`) → chars whose code matches with one substitution.
     /// Built once so substitution-distance-1 lookups are O(code length), not O(table).
     wildcard_to_chars: HashMap<String, Vec<(String, char)>>,
+    /// Code with one letter removed → entries, for "user skipped a letter" lookups.
+    deletion_to_chars: HashMap<String, Vec<(String, char)>>,
+}
+
+/// One edit away from the typed code.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum EditKind {
+    /// One letter replaced.
+    Substitution,
+    /// Typed code is missing one letter of the legal code.
+    Omission,
+    /// Typed code has one extra letter.
+    Insertion,
+    /// Two adjacent letters swapped.
+    Transposition,
 }
 
 impl CodeIndex {
@@ -37,6 +52,49 @@ impl CodeIndex {
                 .or_default()
                 .push((code.clone(), ch));
         }
+        for shorter in deletion_patterns(&code) {
+            self.deletion_to_chars
+                .entry(shorter)
+                .or_default()
+                .push((code.clone(), ch));
+        }
+    }
+
+    /// All (code, char, edit) triples exactly one edit away from `raw_code`
+    /// (substitution, omission, insertion, adjacent transposition). Exact matches excluded.
+    pub fn edit_neighbors(&self, raw_code: &str) -> Vec<(&str, char, EditKind)> {
+        let mut out: Vec<(&str, char, EditKind)> = self
+            .substitution_neighbors(raw_code)
+            .into_iter()
+            .map(|(c, ch)| (c, ch, EditKind::Substitution))
+            .collect();
+        if let Some(list) = self.deletion_to_chars.get(raw_code) {
+            for (code, ch) in list {
+                out.push((code.as_str(), *ch, EditKind::Omission));
+            }
+        }
+        for shorter in deletion_patterns(raw_code) {
+            if let Some((code, _)) = self.code_to_chars.get_key_value(&shorter) {
+                for ch in self.chars_for_code(&shorter) {
+                    out.push((code.as_str(), ch, EditKind::Insertion));
+                }
+            }
+        }
+        let bytes = raw_code.as_bytes();
+        for i in 0..bytes.len().saturating_sub(1) {
+            if bytes[i] == bytes[i + 1] {
+                continue;
+            }
+            let mut swapped = bytes.to_vec();
+            swapped.swap(i, i + 1);
+            let swapped = String::from_utf8(swapped).unwrap_or_default();
+            if let Some((code, _)) = self.code_to_chars.get_key_value(&swapped) {
+                for ch in self.chars_for_code(&swapped) {
+                    out.push((code.as_str(), ch, EditKind::Transposition));
+                }
+            }
+        }
+        out
     }
 
     /// All (code, char) pairs whose code is exactly one substitution away from `raw_code`.
@@ -89,6 +147,25 @@ impl CodeIndex {
             .iter()
             .flat_map(|(code, chars)| chars.iter().map(move |ch| (code.as_str(), *ch)))
     }
+}
+
+/// `abc` → [`bc`, `ac`, `ab`] (only for codes of length ≥ 2).
+fn deletion_patterns(code: &str) -> Vec<String> {
+    let bytes = code.as_bytes();
+    if bytes.len() < 2 {
+        return Vec::new();
+    }
+    (0..bytes.len())
+        .map(|i| {
+            let mut p = String::with_capacity(bytes.len() - 1);
+            for (j, &b) in bytes.iter().enumerate() {
+                if i != j {
+                    p.push(b as char);
+                }
+            }
+            p
+        })
+        .collect()
 }
 
 /// `abc` → [`?bc`, `a?c`, `ab?`]

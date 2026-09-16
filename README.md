@@ -52,7 +52,7 @@ score = languageScore
 ```
 
 Defaults (tuned with `boshiamy_eval` on the Wikipedia trigram model, natural-log
-scores): `λ_edit=3.0`, `λ_change=3.0`, `λ_choice=6.0`, `min_score_delta=4.0`,
+scores): `λ_edit=3.0`, `λ_change=4.0`, `λ_seg=1.0`, `λ_choice=6.0`, `min_score_delta=4.0`,
 32 candidates per position, beam 32.
 
 The real model is a character trigram trained from Chinese Wikipedia

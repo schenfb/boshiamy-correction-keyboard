@@ -9,6 +9,17 @@
 pub struct BoshiamyDistance;
 
 impl BoshiamyDistance {
+    /// Cost of one edit of the given kind (all 1.0 for now; tune with boshiamy_eval).
+    pub fn edit_cost(kind: crate::code_index::EditKind) -> f64 {
+        use crate::code_index::EditKind::*;
+        match kind {
+            Substitution => 1.0,
+            Omission => 1.0,
+            Insertion => 1.0,
+            Transposition => 1.0,
+        }
+    }
+
     /// Distance when both strings are already known; `None` if unsupported/beyond MVP.
     pub fn substitution_distance(a: &str, b: &str) -> Option<f64> {
         if a == b {
