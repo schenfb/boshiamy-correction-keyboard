@@ -33,6 +33,8 @@ struct Args {
     show_failures: usize,
     error_kind: String,
     lambda_seg: Option<f64>,
+    rarity_floor: Option<f64>,
+    rarity_hi: Option<f64>,
     no_lattice: bool,
 }
 
@@ -50,6 +52,8 @@ fn parse_args() -> Result<Args, String> {
         show_failures: 0,
         error_kind: "mixed".into(),
         lambda_seg: None,
+        rarity_floor: None,
+        rarity_hi: None,
         no_lattice: false,
     };
     let argv: Vec<String> = std::env::args().collect();
@@ -77,6 +81,8 @@ fn parse_args() -> Result<Args, String> {
             "--show-failures" => a.show_failures = num(val)? as usize,
             "--error-kind" => a.error_kind = val.clone(),
             "--lambda-seg" => a.lambda_seg = Some(num(val)?),
+            "--rarity-floor" => a.rarity_floor = Some(num(val)?),
+            "--rarity-hi" => a.rarity_hi = Some(num(val)?),
             "--no-lattice" => {
                 a.no_lattice = val == "1" || val == "true";
             }
@@ -223,6 +229,12 @@ fn main() -> ExitCode {
     engine.use_lattice = !args.no_lattice;
     if let Some(ls) = args.lambda_seg {
         engine.lattice_weights_mut().lambda_seg = ls;
+    }
+    if let Some(v) = args.rarity_floor {
+        engine.lattice_weights_mut().rarity_floor = v;
+    }
+    if let Some(v) = args.rarity_hi {
+        engine.lattice_weights_mut().rarity_hi = v;
     }
     let index = engine.index();
 

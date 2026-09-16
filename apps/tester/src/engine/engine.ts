@@ -21,7 +21,7 @@ export interface PolicyConfig {
 }
 
 export const DEFAULT_POLICY: PolicyConfig = {
-  minScoreDelta: 4.0,
+  minScoreDelta: 2.0,
   maxChangedAbsolute: 3,
   maxChangedFraction: 0.25,
 };

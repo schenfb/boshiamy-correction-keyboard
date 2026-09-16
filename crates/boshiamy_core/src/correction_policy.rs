@@ -18,7 +18,10 @@ pub struct CorrectionPolicyConfig {
 impl CorrectionPolicyConfig {
     pub fn mvp_defaults() -> Self {
         Self {
-            min_score_delta: 4.0,
+            // Recall-first: the bar is a suggestion the user can ignore, so a small
+            // margin is enough. Offline (real table, mixed errors): recall 76%,
+            // wrong 15%, false positives 2.3%.
+            min_score_delta: 2.0,
             max_changed_absolute: 3,
             max_changed_fraction: 0.25,
         }

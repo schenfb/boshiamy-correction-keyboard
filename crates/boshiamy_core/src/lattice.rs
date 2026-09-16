@@ -41,6 +41,24 @@ pub struct LatticeWeights {
     pub max_code_len: usize,
     /// How far (in letters) a boundary may move. 1 = space one key early or late.
     pub max_shift: usize,
+    /// The change penalty is scaled by how common the *typed* character is:
+    /// a rare character is more likely a slip, so replacing it is cheaper.
+    /// Unigram log-prob at or above `rarity_hi` pays the full penalty; at or
+    /// below `rarity_lo` pays `rarity_floor` of it; linear in between.
+    pub rarity_hi: f64,
+    pub rarity_lo: f64,
+    pub rarity_floor: f64,
+}
+
+impl LatticeWeights {
+    /// Fraction of `lambda_change` charged for replacing a character with this unigram log-prob.
+    pub fn change_scale(&self, typed_unigram: f64) -> f64 {
+        if self.rarity_hi <= self.rarity_lo {
+            return 1.0;
+        }
+        let t = (typed_unigram - self.rarity_lo) / (self.rarity_hi - self.rarity_lo);
+        t.clamp(0.0, 1.0) * (1.0 - self.rarity_floor) + self.rarity_floor
+    }
 }
 
 impl LatticeWeights {
@@ -54,6 +72,9 @@ impl LatticeWeights {
             max_edit_candidates: 48,
             max_code_len: 5,
             max_shift: 1,
+            rarity_hi: -7.0,
+            rarity_lo: -10.0,
+            rarity_floor: 0.25,
         }
     }
 }
@@ -79,6 +100,8 @@ struct UnitSpan {
     explicit: bool,
     /// True for characters without a raw code: fixed, boundaries cannot move.
     fixed: bool,
+    /// Fraction of the change penalty charged for replacing this unit's character.
+    change_scale: f64,
 }
 
 pub struct LatticeDecoder {
@@ -114,6 +137,7 @@ impl LatticeDecoder {
                 ch: unit.output_character,
                 explicit: unit.is_explicit_selection(),
                 fixed,
+                change_scale: w.change_scale(lm.unigram(unit.output_character)),
             });
         }
         let n = letters.len();
@@ -275,7 +299,7 @@ fn push_state(
     let explicit = usize::from(unit.explicit && !is_original);
     let c = lm.char_id(ch);
     let penalty = w.lambda_edit * dist
-        + w.lambda_change * changed as f64
+        + w.lambda_change * unit.change_scale * changed as f64
         + w.lambda_seg * moved as f64
         + w.lambda_choice * explicit as f64;
     let mut chars = st.chars.clone();
